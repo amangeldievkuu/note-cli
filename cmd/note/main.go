@@ -7,7 +7,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/amangeldievkuu/note/internal/cli"
+	"github.com/amangeldievkuu/note-cli/internal/cli"
 )
 
 // version is set at release time with -ldflags "-X main.version=v1.2.3".

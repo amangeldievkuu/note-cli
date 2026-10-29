@@ -14,9 +14,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/amangeldievkuu/note/internal/config"
-	"github.com/amangeldievkuu/note/internal/server"
-	"github.com/amangeldievkuu/note/internal/store"
+	"github.com/amangeldievkuu/note-cli/internal/config"
+	"github.com/amangeldievkuu/note-cli/internal/server"
+	"github.com/amangeldievkuu/note-cli/internal/store"
 )
 
 func statePath() (string, error) {

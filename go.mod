@@ -1,4 +1,4 @@
-module github.com/amangeldievkuu/note
+module github.com/amangeldievkuu/note-cli
 
 go 1.27.3
 

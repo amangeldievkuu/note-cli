@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amangeldievkuu/note/internal/store"
+	"github.com/amangeldievkuu/note-cli/internal/store"
 )
 
 const richBody = `## Shopping list

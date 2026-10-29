@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amangeldievkuu/note/internal/atomicfile"
+	"github.com/amangeldievkuu/note-cli/internal/atomicfile"
 )
 
 const (

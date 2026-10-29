@@ -21,7 +21,7 @@ $ note open        # browse in the browser; pages refresh when you save
 With Go 1.27.3 or later:
 
 ```sh
-go install github.com/amangeldievkuu/note/cmd/note@latest
+go install github.com/amangeldievkuu/note-cli/cmd/note@latest
 ```
 
 Or from a checkout:

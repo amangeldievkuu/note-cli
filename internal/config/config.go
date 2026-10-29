@@ -13,7 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/amangeldievkuu/note/internal/atomicfile"
+	"github.com/amangeldievkuu/note-cli/internal/atomicfile"
 )
 
 // Config is the user configuration stored in config.yaml.

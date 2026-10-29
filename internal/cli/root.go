@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/amangeldievkuu/note/internal/config"
-	"github.com/amangeldievkuu/note/internal/editor"
-	"github.com/amangeldievkuu/note/internal/store"
+	"github.com/amangeldievkuu/note-cli/internal/config"
+	"github.com/amangeldievkuu/note-cli/internal/editor"
+	"github.com/amangeldievkuu/note-cli/internal/store"
 )
 
 // app holds what commands share: the loaded config and the store.

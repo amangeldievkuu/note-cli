@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/amangeldievkuu/note/internal/config"
-	"github.com/amangeldievkuu/note/internal/editor"
+	"github.com/amangeldievkuu/note-cli/internal/config"
+	"github.com/amangeldievkuu/note-cli/internal/editor"
 )
 
 func (a *app) nvimCmd() *cobra.Command {

@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/amangeldievkuu/note/internal/atomicfile"
+	"github.com/amangeldievkuu/note-cli/internal/atomicfile"
 )
 
 // State describes a running server. "note serve" writes it so "note open"

@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amangeldievkuu/note/internal/render"
-	"github.com/amangeldievkuu/note/internal/store"
-	"github.com/amangeldievkuu/note/web"
+	"github.com/amangeldievkuu/note-cli/internal/render"
+	"github.com/amangeldievkuu/note-cli/internal/store"
+	"github.com/amangeldievkuu/note-cli/web"
 )
 
 // Options configure a Server.

@@ -1,0 +1,35 @@
+{{define "title"}}{{if .Tag}}#{{.Tag}}{{else}}Notes{{end}}{{end}}
+
+{{define "content"}}
+<div class="toolbar">
+  <nav class="tabs" aria-label="Status">
+    {{range .Tabs}}
+    <a href="/?status={{.Status}}{{with $.Tag}}&amp;tag={{.}}{{end}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{.Label}} <span class="count">{{.Count}}</span></a>
+    {{end}}
+  </nav>
+  <input type="search" id="search" placeholder="Search  /" aria-label="Search notes" autocomplete="off" spellcheck="false">
+</div>
+
+{{if .Tags}}
+<nav class="tag-filter" aria-label="Tags">
+  {{if .Tag}}<a class="tag clear" href="/?status={{.Status}}">× all tags</a>{{end}}
+  {{range .Tags}}
+  <a class="tag{{if eq .Tag $.Tag}} active{{end}}" href="/?status={{$.Status}}&amp;tag={{.Tag}}">#{{.Tag}} <span class="count">{{.Count}}</span></a>
+  {{end}}
+</nav>
+{{end}}
+
+<ul class="notes" id="notes">
+  {{range .Notes}}
+  <li{{if .Done}} class="done"{{end}} data-search="{{.Search}}">
+    <span class="id">{{.ID}}</span>
+    <a class="title" href="/n/{{.ID}}">{{.Title}}</a>
+    {{range .Tags}}<span class="tag">#{{.}}</span>{{end}}
+    <time datetime="{{iso .Updated}}" title="Updated {{date .Updated}}">{{reltime .Updated}}</time>
+  </li>
+  {{else}}
+  <li class="empty">No notes here yet. Create one with <code>note new &lt;title&gt;</code>.</li>
+  {{end}}
+</ul>
+<p class="empty" id="no-results" hidden>No notes match your search.</p>
+{{end}}

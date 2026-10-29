@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{block "title" .}}Notes{{end}} · note</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/chroma.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="site">
+  <a href="/" class="brand">note</a>
+  <span class="live" id="live" title="Live reload connecting…"></span>
+</header>
+<main>
+{{template "content" .}}
+</main>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{{define "title"}}{{.Note.Title}}{{end}}
+
+{{define "content"}}
+<p class="back"><a href="/">← All notes</a></p>
+<article>
+  <header class="note-head">
+    <h1{{if .Note.Done}} class="done"{{end}}>{{.Note.Title}}</h1>
+    <div class="meta">
+      <span class="id">#{{.Note.ID}}</span>
+      {{if .Note.Done}}<span class="badge badge-done">✓ Done</span>{{else}}<span class="badge badge-open">Open</span>{{end}}
+      {{range .Note.Tags}}<a class="tag" href="/?status=all&amp;tag={{.}}">#{{.}}</a>{{end}}
+      <span class="dates">
+        Created <time datetime="{{iso .Note.Created}}">{{date .Note.Created}}</time>
+        · Updated <time datetime="{{iso .Note.Updated}}" title="{{date .Note.Updated}}">{{reltime .Note.Updated}}</time>
+      </span>
+    </div>
+    {{if .Write}}
+    <div class="actions">
+      {{if .Note.Done}}
+      <form method="post" action="/n/{{.Note.ID}}/undone">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit">Mark open</button>
+      </form>
+      {{else}}
+      <form method="post" action="/n/{{.Note.ID}}/done">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit">Mark done</button>
+      </form>
+      {{end}}
+      <form method="post" action="/n/{{.Note.ID}}/delete" data-confirm="Move this note to the trash?">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </div>
+    {{end}}
+  </header>
+  <div class="prose">
+{{.Body}}
+  </div>
+</article>
+{{end}}

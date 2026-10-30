@@ -117,7 +117,7 @@ func Stop(ctx context.Context, statePath, notesDir string) (State, error) {
 			return st, nil
 		}
 	}
-	return st, nil
+	return st, fmt.Errorf("server (pid %d) did not stop within 3s; see %s", st.PID, filepath.Join(filepath.Dir(statePath), "server.log"))
 }
 
 // OpenBrowser opens url in the default browser.

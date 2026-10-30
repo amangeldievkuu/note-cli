@@ -152,18 +152,18 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	tag := strings.TrimPrefix(r.URL.Query().Get("tag"), "#")
 
-	all, err := s.store.List(store.Filter{Status: store.StatusAll, Tag: tag})
+	// One pass over the notes serves both the tag bar and the list.
+	notes, err := s.store.List(store.Filter{Status: store.StatusAll})
 	if err != nil {
 		s.serverError(w, err)
 		return
 	}
-	tags, err := s.store.Tags()
-	if err != nil {
-		s.serverError(w, err)
-		return
+	all := notes
+	if tag != "" {
+		all = slices.DeleteFunc(slices.Clone(notes), func(n *store.Note) bool { return !n.HasTag(tag) })
 	}
 
-	page := indexPage{Status: status, Tag: tag, Tags: tags}
+	page := indexPage{Status: status, Tag: tag, Tags: store.CountTags(notes)}
 	open := 0
 	for _, n := range all {
 		if !n.Done {
@@ -192,13 +192,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	s.renderPage(w, s.index, page)
 }
 
-// searchText is what the client-side search box matches against.
+// searchText is what the client-side search box matches against: the
+// whole note, so matches deep in a long body are found too.
 func searchText(n *store.Note) string {
-	body := n.Body
-	if r := []rune(body); len(r) > 500 {
-		body = string(r[:500])
-	}
-	return strings.ToLower(n.Title + " " + strings.Join(n.Tags, " ") + " " + body)
+	return strings.ToLower(n.Title + " " + strings.Join(n.Tags, " ") + " " + n.Body)
 }
 
 type notePage struct {

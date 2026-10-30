@@ -41,15 +41,18 @@ Commands that take an ID also accept a unique, case-insensitive title prefix:
 | Command | Alias | What it does |
 |---|---|---|
 | `note new [title...]` | `n`, `add` | Create a note. `-m "text"` or piped stdin saves it right away; otherwise the editor opens, and quitting without saving discards the note. `-t tag1,tag2` adds tags. Prints the new ID. |
-| `note list` | `ls` | List open notes: ID, done marker, title, tags, last update. `--all`, `--done`, `-t <tag>`, `--json`. Plain `note` does the same. |
-| `note show <id>` | `s` | Render the note in the terminal. `--raw` prints the file as-is. |
+| `note list` | `ls` | List open notes: ID, done marker, title, tags, last update. `--all`, `--done`, `-t <tag>`, `--sort id\|updated\|created` (newest first), `-n <limit>`, `--json`. Plain `note` does the same. |
+| `note show <id>` | `s` | Render the note in the terminal. `--raw` prints the file as-is; `--json` prints the metadata and body. |
 | `note edit <id>` | `e` | Open the note in the editor. `updated` is bumped only if the file changed; changing the title renames the file. |
+| `note append <id> [text...]` | | Append text to the note on a new line, from the arguments or piped stdin, without opening the editor. |
+| `note tag <id> [+tag\|-tag...]` | | Add (`+tag` or a bare `tag`) and remove (`-tag`) tags. With only an ID, print the note's tags. |
+| `note mv <id> <title...>` | | Rename a note (the file is renamed too). |
 | `note done <id...>` | `d` | Mark notes done. |
 | `note undone <id...>` | | Mark notes not done. |
 | `note rm <id...>` | | Move notes to the trash after a y/N prompt. `-f` skips the prompt. |
 | `note restore <id>` | | Bring a note back from the trash. |
 | `note trash` | | List trashed notes. `--empty` deletes them for good (asks first; `-f` skips). |
-| `note search <query>` | `/` | Case-insensitive search across titles, tags, and bodies, with matching lines. |
+| `note search <query>` | `/` | Case-insensitive search across titles, tags, and bodies, with matching lines. `--json` for scripts. |
 | `note tags` | | All tags with note counts. |
 | `note serve` | | Run the web view in the foreground (see below). |
 | `note open [id]` | `o` | Open the web view in the browser, starting a background server if needed. `--print` prints the URL instead. |
@@ -62,6 +65,7 @@ Output is colored when stdout is a terminal and plain when piped, and
 
 ```sh
 id=$(note new "Call the bank" -m "about the card")
+echo "- ask about the fee" | note append "$id"
 note done "$id"
 ```
 

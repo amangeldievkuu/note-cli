@@ -101,7 +101,7 @@ Run "note" with no command to list open notes.`,
 	for _, c := range []*cobra.Command{
 		a.newCmd(), a.listCmd(), a.showCmd(), a.editCmd(),
 		a.doneCmd(true), a.doneCmd(false), a.rmCmd(), a.restoreCmd(), a.trashCmd(),
-		a.searchCmd(), a.tagsCmd(),
+		a.appendCmd(), a.tagCmd(), a.mvCmd(), a.searchCmd(), a.tagsCmd(),
 	} {
 		c.GroupID = "notes"
 		root.AddCommand(c)
@@ -157,5 +157,15 @@ func (a *app) completeNotes(trash bool, filter store.Filter) cobra.CompletionFun
 			out = append(out, cobra.CompletionWithDesc(fmt.Sprint(n.ID), n.Title))
 		}
 		return out, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+// completeFirst uses complete for the first argument only.
+func completeFirst(complete cobra.CompletionFunc) cobra.CompletionFunc {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return complete(cmd, args, toComplete)
 	}
 }

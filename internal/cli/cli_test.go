@@ -230,3 +230,48 @@ func updatedLine(s string) string {
 	}
 	return ""
 }
+
+func TestQuickEdits(t *testing.T) {
+	sandbox(t)
+	mustRun(t, nil, "new", "Groceries", "-t", "personal", "-m", "- [ ] milk")
+
+	// Text that looks like a flag is appended as is.
+	wantContains(t, mustRun(t, nil, "append", "groc", "- [ ] eggs"), "Appended: 1 Groceries")
+	mustRun(t, strings.NewReader("- [ ] bread\n"), "append", "1")
+	if _, err := run(t, nil, "append", "1"); err == nil {
+		t.Error("append with no text succeeded")
+	}
+
+	wantContains(t, mustRun(t, nil, "tag", "1", "+Work", "-personal", "home"), "1 Groceries  #work #home")
+	wantContains(t, mustRun(t, nil, "tag", "1"), "#work #home")
+	wantContains(t, mustRun(t, nil, "tag", "--help"), "remove them with -tag")
+
+	wantContains(t, mustRun(t, nil, "mv", "1", "Weekly", "shop"), "Renamed: 1 Weekly shop")
+
+	var shown jsonShow
+	if err := json.Unmarshal([]byte(mustRun(t, nil, "show", "1", "--json")), &shown); err != nil {
+		t.Fatal(err)
+	}
+	if shown.Title != "Weekly shop" || shown.Body != "- [ ] milk\n- [ ] eggs\n- [ ] bread\n" {
+		t.Errorf("show --json = %+v", shown)
+	}
+
+	var matches []jsonMatch
+	if err := json.Unmarshal([]byte(mustRun(t, nil, "search", "eggs", "--json")), &matches); err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || len(matches[0].Lines) != 1 || matches[0].Lines[0].Text != "- [ ] eggs" {
+		t.Errorf("search --json = %+v", matches)
+	}
+
+	mustRun(t, nil, "new", "Second", "-m", "x")
+	mustRun(t, nil, "new", "Third", "-m", "x")
+	out := mustRun(t, nil, "ls", "--sort", "created", "-n", "2")
+	wantContains(t, out, "Third", "Second")
+	if strings.Contains(out, "Weekly") {
+		t.Errorf("limit ignored:\n%s", out)
+	}
+	if _, err := run(t, nil, "ls", "--sort", "bogus"); err == nil {
+		t.Error("unknown sort accepted")
+	}
+}

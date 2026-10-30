@@ -99,8 +99,18 @@ func (s *Store) PathOf(id int) (string, error) {
 }
 
 // Save writes n back to disk, bumping Updated. If the title changed, the
-// file is renamed to match.
+// file is renamed to match. Prefer Update for read-modify-write changes, so
+// a concurrent writer can't slip in between the read and the save.
 func (s *Store) Save(n *Note) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return s.save(n)
+}
+
+func (s *Store) save(n *Note) error {
 	n.Title = strings.TrimSpace(n.Title)
 	if n.Title == "" {
 		n.Title = titleFromBody(n.Body)
@@ -127,21 +137,89 @@ func (s *Store) write(n *Note) error {
 	return nil
 }
 
-// SetDone marks the note done or not done.
-func (s *Store) SetDone(id int, done bool) (*Note, error) {
+// Update loads a note, applies fn, and saves it if fn reports a change, all
+// under the store lock.
+func (s *Store) Update(id int, fn func(n *Note) (changed bool)) (*Note, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
 	n, err := s.Get(id)
 	if err != nil {
 		return nil, err
 	}
-	if n.Done == done {
+	if !fn(n) {
 		return n, nil
 	}
-	n.Done = done
-	return n, s.Save(n)
+	return n, s.save(n)
+}
+
+// SetDone marks the note done or not done.
+func (s *Store) SetDone(id int, done bool) (*Note, error) {
+	return s.Update(id, func(n *Note) bool {
+		changed := n.Done != done
+		n.Done = done
+		return changed
+	})
+}
+
+// Append adds text to the end of the note's body on a new line.
+func (s *Store) Append(id int, text string) (*Note, error) {
+	text = strings.Trim(text, "\r\n")
+	return s.Update(id, func(n *Note) bool {
+		if strings.TrimSpace(text) == "" {
+			return false
+		}
+		body := strings.TrimRight(n.Body, "\n")
+		if body != "" {
+			body += "\n"
+		}
+		n.Body = body + text + "\n"
+		return true
+	})
+}
+
+// Retag adds and removes tags, ignoring case and a leading "#". Removing
+// happens first, so a tag in both lists ends up on the note.
+func (s *Store) Retag(id int, add, remove []string) (*Note, error) {
+	add, remove = normalizeTags(add), normalizeTags(remove)
+	return s.Update(id, func(n *Note) bool {
+		var tags []string
+		for _, t := range n.Tags {
+			if !slices.Contains(remove, strings.ToLower(t)) {
+				tags = append(tags, t)
+			}
+		}
+		tags = normalizeTags(append(tags, add...))
+		changed := !slices.Equal(tags, n.Tags)
+		n.Tags = tags
+		return changed
+	})
+}
+
+// Rename changes the note's title, which also renames its file.
+func (s *Store) Rename(id int, title string) (*Note, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, errors.New("new title is empty")
+	}
+	return s.Update(id, func(n *Note) bool {
+		changed := n.Title != title
+		n.Title = title
+		return changed
+	})
 }
 
 // Trash moves a note into the trash directory.
 func (s *Store) Trash(id int) (*Note, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
 	n, err := s.Get(id)
 	if err != nil {
 		return nil, err
@@ -156,6 +234,12 @@ func (s *Store) Trash(id int) (*Note, error) {
 
 // Restore moves a note out of the trash.
 func (s *Store) Restore(id int) (*Note, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
 	src, err := findFile(s.TrashDir(), id)
 	if err != nil {
 		if nf, ok := errors.AsType[*NotFoundError](err); ok {
@@ -391,8 +475,7 @@ func (s *Store) lock() (unlock func(), err error) {
 			return nil, fmt.Errorf("lock notes dir: %w", err)
 		}
 		if info, err := os.Stat(path); err == nil && time.Since(info.ModTime()) > lockStale {
-			slog.Debug("removing stale lock", "path", path)
-			os.Remove(path)
+			breakStaleLock(path)
 			continue
 		}
 		if time.Now().After(deadline) {
@@ -400,4 +483,23 @@ func (s *Store) lock() (unlock func(), err error) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// breakStaleLock removes the lock file at path if it is still stale. It
+// renames the file aside first, so two processes breaking the same lock
+// can't remove a fresh lock that one of them just took; a lock that turns
+// out to be fresh after the rename is linked back into place.
+func breakStaleLock(path string) {
+	aside := fmt.Sprintf("%s.stale-%d-%d", path, os.Getpid(), time.Now().UnixNano())
+	if err := os.Rename(path, aside); err != nil {
+		return // already broken by someone else
+	}
+	defer os.Remove(aside)
+	if info, err := os.Stat(aside); err == nil && time.Since(info.ModTime()) <= lockStale {
+		if err := os.Link(aside, path); err != nil {
+			slog.Warn("could not put back a fresh lock", "path", path, "err", err)
+		}
+		return
+	}
+	slog.Debug("removed stale lock", "path", path)
 }

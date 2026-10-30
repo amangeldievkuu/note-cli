@@ -19,10 +19,21 @@ const (
 	StatusAll
 )
 
+// Order sorts a List result.
+type Order int
+
+const (
+	OrderID      Order = iota // lowest ID first
+	OrderUpdated              // most recently updated first
+	OrderCreated              // most recently created first
+)
+
 // Filter narrows a List call.
 type Filter struct {
 	Status Status
 	Tag    string // empty matches every note
+	Order  Order
+	Limit  int // 0 means no limit
 }
 
 func (f Filter) match(n *Note) bool {
@@ -50,9 +61,24 @@ func collect[T any](seq iter.Seq2[T, error], keep func(T) bool) ([]T, error) {
 	return out, nil
 }
 
-// List returns the notes matching f in ID order.
+// List returns the notes matching f in f.Order, at most f.Limit of them.
 func (s *Store) List(f Filter) ([]*Note, error) {
-	return collect(s.All(), f.match)
+	notes, err := collect(s.All(), f.match)
+	if err != nil {
+		return nil, err
+	}
+	// Timestamps have one-second resolution, so ties go to the higher,
+	// newer ID.
+	switch f.Order {
+	case OrderUpdated:
+		slices.SortFunc(notes, func(a, b *Note) int { return cmp.Or(b.Updated.Compare(a.Updated), b.ID-a.ID) })
+	case OrderCreated:
+		slices.SortFunc(notes, func(a, b *Note) int { return cmp.Or(b.Created.Compare(a.Created), b.ID-a.ID) })
+	}
+	if f.Limit > 0 && len(notes) > f.Limit {
+		notes = notes[:f.Limit]
+	}
+	return notes, nil
 }
 
 // ListTrash returns the trashed notes in ID order.
@@ -175,11 +201,18 @@ type TagCount struct {
 // Tags counts tags across all notes outside the trash, most used first.
 // Tags differing only in case are counted together.
 func (s *Store) Tags() ([]TagCount, error) {
+	notes, err := collect(s.All(), func(*Note) bool { return true })
+	if err != nil {
+		return nil, err
+	}
+	return CountTags(notes), nil
+}
+
+// CountTags counts the tags on notes, most used first. Tags differing only
+// in case are counted together.
+func CountTags(notes []*Note) []TagCount {
 	counts := map[string]int{}
-	for n, err := range s.All() {
-		if err != nil {
-			return nil, err
-		}
+	for _, n := range notes {
 		for _, t := range normalizeTags(n.Tags) {
 			counts[t]++
 		}
@@ -191,5 +224,5 @@ func (s *Store) Tags() ([]TagCount, error) {
 	slices.SortFunc(out, func(a, b TagCount) int {
 		return cmp.Or(cmp.Compare(b.Count, a.Count), cmp.Compare(a.Tag, b.Tag))
 	})
-	return out, nil
+	return out
 }

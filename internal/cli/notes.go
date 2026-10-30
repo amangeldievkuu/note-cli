@@ -117,14 +117,16 @@ func (a *app) runEditor(cmd *cobra.Command, path string, before []byte, mode edi
 // bumps updated and renames the file if the title changed. With
 // untitled set, a title still left as "Untitled" is taken from the body.
 func (a *app) saveEdited(id int, untitled bool) (*store.Note, error) {
-	n, err := a.store.Get(id)
+	n, err := a.store.Update(id, func(n *store.Note) bool {
+		if untitled && n.Title == store.Untitled {
+			n.Title = "" // saving derives it from the body
+		}
+		return true
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w\nyour changes are saved; run \"note edit %d\" to fix the note", err, id)
 	}
-	if untitled && n.Title == store.Untitled {
-		n.Title = "" // Save derives it from the body
-	}
-	return n, a.store.Save(n)
+	return n, nil
 }
 
 func (a *app) editCmd() *cobra.Command {
@@ -178,8 +180,12 @@ func (a *app) editCmd() *cobra.Command {
 type listOptions struct {
 	all, done bool
 	tag       string
+	sort      string
+	limit     int
 	json      bool
 }
+
+var sortOrders = map[string]store.Order{"id": store.OrderID, "updated": store.OrderUpdated, "created": store.OrderCreated}
 
 func (a *app) listCmd() *cobra.Command {
 	var o listOptions
@@ -195,9 +201,12 @@ func (a *app) listCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&o.all, "all", "a", false, "include done notes")
 	cmd.Flags().BoolVar(&o.done, "done", false, "only done notes")
 	cmd.Flags().StringVarP(&o.tag, "tag", "t", "", "only notes with this tag")
+	cmd.Flags().StringVar(&o.sort, "sort", "id", "sort by id, updated, or created (newest first)")
+	cmd.Flags().IntVarP(&o.limit, "limit", "n", 0, "show at most this many notes")
 	cmd.Flags().BoolVar(&o.json, "json", false, "print JSON")
 	cmd.MarkFlagsMutuallyExclusive("all", "done")
 	_ = cmd.RegisterFlagCompletionFunc("tag", a.completeTags)
+	_ = cmd.RegisterFlagCompletionFunc("sort", cobra.FixedCompletions([]cobra.Completion{"id", "updated", "created"}, cobra.ShellCompDirectiveNoFileComp))
 	return cmd
 }
 
@@ -227,8 +236,29 @@ type jsonNote struct {
 	Path    string    `json:"path"`
 }
 
+func toJSON(n *store.Note) jsonNote {
+	tags := n.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return jsonNote{n.ID, n.Title, tags, n.Done, n.Created, n.Updated, n.Path}
+}
+
+func writeJSON(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
 func (a *app) runList(cmd *cobra.Command, o listOptions) error {
-	f := store.Filter{Status: store.StatusOpen, Tag: o.tag}
+	order, ok := sortOrders[o.sort]
+	if !ok && o.sort != "" {
+		return fmt.Errorf("unknown sort %q: use id, updated, or created", o.sort)
+	}
+	if o.limit < 0 {
+		return fmt.Errorf("--limit must not be negative")
+	}
+	f := store.Filter{Status: store.StatusOpen, Tag: o.tag, Order: order, Limit: o.limit}
 	switch {
 	case o.all:
 		f.Status = store.StatusAll
@@ -244,15 +274,9 @@ func (a *app) runList(cmd *cobra.Command, o listOptions) error {
 	if o.json {
 		items := make([]jsonNote, 0, len(notes))
 		for _, n := range notes {
-			tags := n.Tags
-			if tags == nil {
-				tags = []string{}
-			}
-			items = append(items, jsonNote{n.ID, n.Title, tags, n.Done, n.Created, n.Updated, n.Path})
+			items = append(items, toJSON(n))
 		}
-		enc := json.NewEncoder(out)
-		enc.SetIndent("", "  ")
-		return enc.Encode(items)
+		return writeJSON(out, items)
 	}
 
 	if len(notes) == 0 {
@@ -299,8 +323,14 @@ func formatTags(tags []string) string {
 	return "#" + strings.Join(tags, " #")
 }
 
+// jsonShow is the --json form of "note show".
+type jsonShow struct {
+	jsonNote
+	Body string `json:"body"`
+}
+
 func (a *app) showCmd() *cobra.Command {
-	var raw bool
+	var raw, asJSON bool
 	cmd := &cobra.Command{
 		Use:               "show <id>",
 		Aliases:           []string{"s"},
@@ -312,6 +342,9 @@ func (a *app) showCmd() *cobra.Command {
 			n, err := a.store.Resolve(args[0])
 			if err != nil {
 				return err
+			}
+			if asJSON {
+				return writeJSON(out, jsonShow{toJSON(n), n.Body})
 			}
 			if raw {
 				data, err := os.ReadFile(n.Path)
@@ -336,6 +369,8 @@ func (a *app) showCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&raw, "raw", false, "print the raw Markdown file")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON with the body")
+	cmd.MarkFlagsMutuallyExclusive("raw", "json")
 	return cmd
 }
 
@@ -509,8 +544,20 @@ func (a *app) trashCmd() *cobra.Command {
 	return cmd
 }
 
+// jsonMatch is the --json form of a search result.
+type jsonMatch struct {
+	jsonNote
+	Lines []jsonLine `json:"lines"`
+}
+
+type jsonLine struct {
+	N    int    `json:"n"`
+	Text string `json:"text"`
+}
+
 func (a *app) searchCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	cmd := &cobra.Command{
 		Use:     "search <query...>",
 		Aliases: []string{"/"},
 		Short:   "Search titles, tags, and bodies",
@@ -522,6 +569,17 @@ func (a *app) searchCmd() *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
+			if asJSON {
+				items := make([]jsonMatch, 0, len(matches))
+				for _, m := range matches {
+					lines := make([]jsonLine, 0, len(m.Lines))
+					for _, l := range m.Lines {
+						lines = append(lines, jsonLine{l.N, l.Text})
+					}
+					items = append(items, jsonMatch{toJSON(m.Note), lines})
+				}
+				return writeJSON(out, items)
+			}
 			if len(matches) == 0 {
 				fmt.Fprintf(out, "No matches for %q.\n", q)
 				return nil
@@ -543,6 +601,8 @@ func (a *app) searchCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
+	return cmd
 }
 
 // highlight marks each case-insensitive occurrence of q in s.
@@ -585,6 +645,133 @@ func (a *app) tagsCmd() *cobra.Command {
 				rows[i] = []cell{{text: "#" + t.Tag, style: p.yellow}, {text: strconv.Itoa(t.Count), style: p.dim}}
 			}
 			writeTable(out, rows)
+			return nil
+		},
+	}
+}
+
+func (a *app) appendCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "append <id> [text...]",
+		Short: "Append text to a note without opening the editor",
+		Long: `Append text to the end of a note on a new line. The text comes from the
+arguments or, if there are none, from piped input.`,
+		Example: `  note append groceries "- [ ] eggs"
+  date | note append 7`,
+		// Text such as "- [ ] eggs" must not be parsed as flags.
+		DisableFlagParsing: true,
+		ValidArgsFunction:  completeFirst(a.completeNotes(false, store.Filter{Status: store.StatusAll})),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			args, help := rawArgs(args)
+			if help {
+				return cmd.Help()
+			}
+			if len(args) == 0 {
+				return errors.New("append needs a note ID")
+			}
+			text := strings.Join(args[1:], " ")
+			if len(args) == 1 && isPiped(cmd.InOrStdin()) {
+				data, err := io.ReadAll(cmd.InOrStdin())
+				if err != nil {
+					return fmt.Errorf("read stdin: %w", err)
+				}
+				text = string(data)
+			}
+			if strings.TrimSpace(text) == "" {
+				return errors.New("nothing to append: pass text or pipe it in")
+			}
+			n, err := a.store.Resolve(args[0])
+			if err != nil {
+				return err
+			}
+			if n, err = a.store.Append(n.ID, text); err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			p := colorFor(out)
+			fmt.Fprintf(out, "%s %s %s\n", p.green("Appended:"), p.cyan(strconv.Itoa(n.ID)), n.Title)
+			return nil
+		},
+	}
+}
+
+// rawArgs prepares the arguments of a command with DisableFlagParsing. It
+// reports whether help was asked for and drops a leading "--".
+func rawArgs(args []string) ([]string, bool) {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		return nil, true
+	}
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+	return args, false
+}
+
+func (a *app) tagCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "tag <id> [+tag|-tag...]",
+		Short: "Add or remove a note's tags",
+		Long: `Add tags with +tag (or a bare tag) and remove them with -tag. With only
+an ID, print the note's tags.`,
+		Example: `  note tag 7 +work -personal
+  note tag groceries errands`,
+		// "-tag" must reach RunE as an argument, not be parsed as a flag.
+		DisableFlagParsing: true,
+		ValidArgsFunction:  completeFirst(a.completeNotes(false, store.Filter{Status: store.StatusAll})),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			args, help := rawArgs(args)
+			if help {
+				return cmd.Help()
+			}
+			if len(args) == 0 {
+				return errors.New("tag needs a note ID")
+			}
+			var add, remove []string
+			for _, arg := range args[1:] {
+				if t, ok := strings.CutPrefix(arg, "-"); ok {
+					remove = append(remove, t)
+				} else {
+					add = append(add, strings.TrimPrefix(arg, "+"))
+				}
+			}
+			n, err := a.store.Resolve(args[0])
+			if err != nil {
+				return err
+			}
+			if len(add)+len(remove) > 0 {
+				if n, err = a.store.Retag(n.ID, add, remove); err != nil {
+					return err
+				}
+			}
+			out := cmd.OutOrStdout()
+			p := colorFor(out)
+			tags := p.dim("(no tags)")
+			if len(n.Tags) > 0 {
+				tags = p.yellow(formatTags(n.Tags))
+			}
+			fmt.Fprintf(out, "%s %s  %s\n", p.cyan(strconv.Itoa(n.ID)), n.Title, tags)
+			return nil
+		},
+	}
+}
+
+func (a *app) mvCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "mv <id> <new title...>",
+		Short:             "Rename a note",
+		Args:              cobra.MinimumNArgs(2),
+		ValidArgsFunction: completeFirst(a.completeNotes(false, store.Filter{Status: store.StatusAll})),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			n, err := a.store.Resolve(args[0])
+			if err != nil {
+				return err
+			}
+			if n, err = a.store.Rename(n.ID, strings.Join(args[1:], " ")); err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			p := colorFor(out)
+			fmt.Fprintf(out, "%s %s %s\n", p.green("Renamed:"), p.cyan(strconv.Itoa(n.ID)), n.Title)
 			return nil
 		},
 	}

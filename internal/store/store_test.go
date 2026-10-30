@@ -2,10 +2,12 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -594,6 +596,151 @@ func TestParseFilename(t *testing.T) {
 		id, ok := ParseFilename(tt.name)
 		if id != tt.id || ok != tt.ok {
 			t.Errorf("ParseFilename(%q) = %d, %v, want %d, %v", tt.name, id, ok, tt.id, tt.ok)
+		}
+	}
+}
+
+func TestAppendRetagRename(t *testing.T) {
+	s := newStore(t)
+	seedStore(t, s, seed{title: "Groceries", tags: []string{"personal"}, body: "- [ ] milk\n\n"})
+
+	n, err := s.Append(1, "- [ ] eggs\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Body != "- [ ] milk\n- [ ] eggs\n" {
+		t.Errorf("body after append = %q", n.Body)
+	}
+	before := n.Updated
+	if n, err = s.Append(1, "  \n"); err != nil || !n.Updated.Equal(before) {
+		t.Errorf("blank append changed the note: updated %v, err %v", n.Updated, err)
+	}
+
+	if n, err = s.Retag(1, []string{"#Work", "home"}, []string{"PERSONAL", "home"}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"work", "home"}; !slices.Equal(n.Tags, want) {
+		t.Errorf("tags = %v, want %v", n.Tags, want)
+	}
+
+	if n, err = s.Rename(1, " Weekly shop "); err != nil {
+		t.Fatal(err)
+	}
+	if n.Title != "Weekly shop" || filepath.Base(n.Path) != "0001-weekly-shop.md" {
+		t.Errorf("after rename: title %q, path %s", n.Title, n.Path)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir(), "0001-groceries.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("old file still there: %v", err)
+	}
+	if _, err := s.Rename(1, " "); err == nil {
+		t.Error("empty rename succeeded")
+	}
+	if _, err := s.Append(9, "x"); !isNotFound(err) {
+		t.Errorf("append to missing note: %v", err)
+	}
+}
+
+func TestListOrderAndLimit(t *testing.T) {
+	s := newStore(t)
+	seedStore(t, s, seed{title: "a"}, seed{title: "b"}, seed{title: "c"})
+	if _, err := s.Append(1, "touched last"); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		filter Filter
+		want   []int
+	}{
+		{name: "id", filter: Filter{Status: StatusAll}, want: []int{1, 2, 3}},
+		{name: "updated", filter: Filter{Status: StatusAll, Order: OrderUpdated}, want: []int{1, 3, 2}},
+		{name: "created", filter: Filter{Status: StatusAll, Order: OrderCreated}, want: []int{3, 2, 1}},
+		{name: "limit", filter: Filter{Status: StatusAll, Order: OrderUpdated, Limit: 2}, want: []int{1, 3}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.List(tt.filter)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(ids(got), tt.want) {
+				t.Errorf("List = %v, want %v", ids(got), tt.want)
+			}
+		})
+	}
+}
+
+// TestConcurrentWriters checks that the lock keeps read-modify-write
+// updates from losing each other and IDs from being handed out twice.
+func TestConcurrentWriters(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "notes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create("Log", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	const n = 10
+	var wg sync.WaitGroup
+	errs := make(chan error, 2*n)
+	for i := range n {
+		wg.Go(func() {
+			_, err := s.Append(1, fmt.Sprintf("line %d", i))
+			errs <- err
+		})
+		wg.Go(func() {
+			_, err := s.Create(fmt.Sprintf("note %d", i), nil, "x")
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	log, err := s.Get(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(log.Body, "line "); got != n {
+		t.Errorf("log has %d appended lines, want %d:\n%s", got, n, log.Body)
+	}
+	all, err := s.List(Filter{Status: StatusAll})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}; !slices.Equal(ids(all), want) {
+		t.Errorf("ids = %v, want %v", ids(all), want)
+	}
+}
+
+func TestStaleLock(t *testing.T) {
+	s := newStore(t)
+	lock := filepath.Join(s.Dir(), lockFile)
+
+	// A fresh lock survives an attempt to break it.
+	if err := os.WriteFile(lock, []byte("1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	breakStaleLock(lock)
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("fresh lock was removed: %v", err)
+	}
+
+	// An old one is broken, so writes go through.
+	old := time.Now().Add(-2 * lockStale)
+	if err := os.Chtimes(lock, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create("after stale lock", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(s.Dir())
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), lockFile) {
+			t.Errorf("left behind %s", e.Name())
 		}
 	}
 }

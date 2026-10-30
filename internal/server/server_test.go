@@ -40,6 +40,10 @@ func newTestServer(t *testing.T, write bool) (*httptest.Server, *Server, *store.
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A fixed clock makes every note equally recent, so the index lists
+	// them in ID order instead of depending on a second boundary.
+	fixed := time.Date(2026, 10, 29, 10, 15, 0, 0, time.UTC)
+	s.SetClock(func() time.Time { return fixed })
 	for _, n := range []struct {
 		title string
 		tags  []string
@@ -396,5 +400,27 @@ func TestListenFallsBack(t *testing.T) {
 	addr := l.Addr().(*net.TCPAddr)
 	if addr.Port <= port || addr.Port >= port+20 || !addr.IP.IsLoopback() {
 		t.Errorf("Listen(%d) bound %s, want 127.0.0.1 on a later port", port, addr)
+	}
+}
+
+func TestIndexSearchesWholeBody(t *testing.T) {
+	ts, _, s := newTestServer(t, false)
+	if _, err := s.Create("Long note", nil, strings.Repeat("filler ", 200)+"needle\n"); err != nil {
+		t.Fatal(err)
+	}
+	_, body := get(t, ts.URL+"/")
+	if !strings.Contains(body, "needle") {
+		t.Error("search text is missing a word deep in the body")
+	}
+}
+
+func TestIndexTagBarCountsAllNotes(t *testing.T) {
+	ts, _, _ := newTestServer(t, false)
+	// Filtering by one tag still lists every tag in the bar.
+	_, body := get(t, ts.URL+"/?tag=work")
+	for _, w := range []string{"#errands", "#work"} {
+		if !strings.Contains(body, w) {
+			t.Errorf("tag bar missing %s", w)
+		}
 	}
 }

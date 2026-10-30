@@ -269,6 +269,14 @@ func TestWriteActions(t *testing.T) {
 			check: func(t *testing.T) { wantDone(t, s, 2, false) },
 		},
 		{
+			name: "start", path: "/n/1/start", form: url.Values{"csrf": {srv.csrf}}, code: http.StatusSeeOther,
+			check: func(t *testing.T) { wantDoing(t, s, 1, true) },
+		},
+		{
+			name: "stop", path: "/n/1/stop", form: url.Values{"csrf": {srv.csrf}}, code: http.StatusSeeOther,
+			check: func(t *testing.T) { wantDoing(t, s, 1, false) },
+		},
+		{
 			name: "delete", path: "/n/3/delete", form: url.Values{"csrf": {srv.csrf}}, code: http.StatusSeeOther,
 			check: func(t *testing.T) {
 				if _, err := s.Get(3); err == nil {
@@ -301,6 +309,41 @@ func wantDone(t *testing.T, s *store.Store, id int, done bool) {
 	}
 	if n.Done != done {
 		t.Errorf("note %d done = %v, want %v", id, n.Done, done)
+	}
+}
+
+func wantDoing(t *testing.T, s *store.Store, id int, doing bool) {
+	t.Helper()
+	n, err := s.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Doing != doing {
+		t.Errorf("note %d doing = %v, want %v", id, n.Doing, doing)
+	}
+}
+
+func TestDoingNote(t *testing.T) {
+	ts, _, s := newTestServer(t, true)
+	if _, err := s.SetDoing(3, true); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := get(t, ts.URL+"/")
+	if !strings.Contains(body, `<li class="doing"`) || !strings.Contains(body, `class="dot"`) {
+		t.Error("doing note has no dot in the index")
+	}
+	if strings.Index(body, "Work thing") > strings.Index(body, "Buy groceries") {
+		t.Error("doing note not listed first")
+	}
+
+	_, body = get(t, ts.URL+"/n/3")
+	if !strings.Contains(body, "badge-doing") || !strings.Contains(body, `action="/n/3/stop"`) {
+		t.Error("doing note page has no doing badge or Stop button")
+	}
+	_, body = get(t, ts.URL+"/n/1")
+	if !strings.Contains(body, `action="/n/1/start"`) {
+		t.Error("open note page has no Start button")
 	}
 }
 

@@ -3,6 +3,7 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -27,8 +28,8 @@ import (
 
 // Options configure a Server.
 type Options struct {
-	// Write enables the "Mark done" and "Delete" buttons and their POST
-	// endpoints. The server is read-only without it.
+	// Write enables the "Mark done", "Start", and "Delete" buttons and
+	// their POST endpoints. The server is read-only without it.
 	Write bool
 }
 
@@ -83,8 +84,14 @@ func (s *Server) Handler() http.Handler {
 
 	if s.write {
 		cop := http.NewCrossOriginProtection()
-		mux.Handle("POST /n/{id}/done", cop.Handler(s.csrfCheck(s.handleSetDone(true))))
-		mux.Handle("POST /n/{id}/undone", cop.Handler(s.csrfCheck(s.handleSetDone(false))))
+		for path, set := range map[string]func(id int) (*store.Note, error){
+			"done":   func(id int) (*store.Note, error) { return s.store.SetDone(id, true) },
+			"undone": func(id int) (*store.Note, error) { return s.store.SetDone(id, false) },
+			"start":  func(id int) (*store.Note, error) { return s.store.SetDoing(id, true) },
+			"stop":   func(id int) (*store.Note, error) { return s.store.SetDoing(id, false) },
+		} {
+			mux.Handle("POST /n/{id}/"+path, cop.Handler(s.csrfCheck(s.handleSet(set))))
+		}
 		mux.Handle("POST /n/{id}/delete", cop.Handler(s.csrfCheck(http.HandlerFunc(s.handleDelete))))
 	}
 	return localOnly(logRequests(mux))
@@ -174,15 +181,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		}
 		page.Notes = append(page.Notes, listItem{Note: n, Search: searchText(n)})
 	}
-	// Open notes first, then done; most recently updated first in each.
+	// Doing notes first, then open, then done; most recently updated first
+	// in each.
 	slices.SortStableFunc(page.Notes, func(a, b listItem) int {
-		if a.Done != b.Done {
-			if a.Done {
-				return 1
-			}
-			return -1
-		}
-		return b.Updated.Compare(a.Updated)
+		return cmp.Or(cmp.Compare(rank(a.Note), rank(b.Note)), b.Updated.Compare(a.Updated))
 	})
 	page.Tabs = []tab{
 		{Status: "open", Label: "Open", Count: open, Active: status == "open"},
@@ -190,6 +192,17 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		{Status: "all", Label: "All", Count: len(all), Active: status == "all"},
 	}
 	s.renderPage(w, s.index, page)
+}
+
+// rank orders notes in the index: doing, open, done.
+func rank(n *store.Note) int {
+	switch {
+	case n.Doing:
+		return 0
+	case n.Done:
+		return 2
+	}
+	return 1
 }
 
 // searchText is what the client-side search box matches against: the
@@ -236,13 +249,14 @@ func (s *Server) lookup(w http.ResponseWriter, r *http.Request) (*store.Note, bo
 	return n, true
 }
 
-func (s *Server) handleSetDone(done bool) http.Handler {
+// handleSet applies set to the note and redirects back to its page.
+func (s *Server) handleSet(set func(id int) (*store.Note, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n, ok := s.lookup(w, r)
 		if !ok {
 			return
 		}
-		if _, err := s.store.SetDone(n.ID, done); err != nil {
+		if _, err := set(n.ID); err != nil {
 			s.serverError(w, err)
 			return
 		}

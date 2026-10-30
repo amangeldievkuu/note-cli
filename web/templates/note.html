@@ -7,7 +7,7 @@
     <h1{{if .Note.Done}} class="done"{{end}}>{{.Note.Title}}</h1>
     <div class="meta">
       <span class="id">#{{.Note.ID}}</span>
-      {{if .Note.Done}}<span class="badge badge-done">✓ Done</span>{{else}}<span class="badge badge-open">Open</span>{{end}}
+      {{if .Note.Done}}<span class="badge badge-done">✓ Done</span>{{else if .Note.Doing}}<span class="badge badge-doing">● Doing</span>{{else}}<span class="badge badge-open">Open</span>{{end}}
       {{range .Note.Tags}}<a class="tag" href="/?status=all&amp;tag={{.}}">#{{.}}</a>{{end}}
       <span class="dates">
         Created <time datetime="{{iso .Note.Created}}">{{date .Note.Created}}</time>
@@ -22,6 +22,10 @@
         <button type="submit">Mark open</button>
       </form>
       {{else}}
+      <form method="post" action="/n/{{.Note.ID}}/{{if .Note.Doing}}stop{{else}}start{{end}}">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit">{{if .Note.Doing}}Stop{{else}}Start{{end}}</button>
+      </form>
       <form method="post" action="/n/{{.Note.ID}}/done">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <button type="submit">Mark done</button>

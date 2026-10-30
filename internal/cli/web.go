@@ -39,8 +39,8 @@ func (a *app) serveCmd() *cobra.Command {
 		Long: `Serve notes on 127.0.0.1 (server_port from the config, or the next free
 port). Pages reload by themselves when a note file changes.
 
-The web view is read-only unless --write is given, which adds "Mark done"
-and "Delete" buttons.`,
+The web view is read-only unless --write is given, which adds "Mark done",
+"Start", and "Delete" buttons.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -115,7 +115,7 @@ and "Delete" buttons.`,
 		},
 	}
 	cmd.Flags().IntVarP(&port, "port", "p", 0, "port to listen on (default server_port from the config)")
-	cmd.Flags().BoolVar(&write, "write", false, `enable the "Mark done" and "Delete" buttons`)
+	cmd.Flags().BoolVar(&write, "write", false, `enable the "Mark done", "Start", and "Delete" buttons`)
 	cmd.Flags().BoolVar(&open, "open", false, "open the browser (default open_browser from the config)")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "don't open the browser")
 	cmd.Flags().BoolVar(&stop, "stop", false, "stop the background server started by \"note open\"")

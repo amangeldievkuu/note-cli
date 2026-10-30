@@ -21,8 +21,9 @@
 
 <ul class="notes" id="notes">
   {{range .Notes}}
-  <li{{if .Done}} class="done"{{end}} data-search="{{.Search}}">
+  <li{{if .Done}} class="done"{{else if .Doing}} class="doing"{{end}} data-search="{{.Search}}">
     <span class="id">{{.ID}}</span>
+    {{if .Doing}}<span class="dot" title="Doing">●</span>{{end}}
     <a class="title" href="/n/{{.ID}}">{{.Title}}</a>
     {{range .Tags}}<span class="tag">#{{.}}</span>{{end}}
     <time datetime="{{iso .Updated}}" title="Updated {{date .Updated}}">{{reltime .Updated}}</time>

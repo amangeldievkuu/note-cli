@@ -11,6 +11,8 @@
   --tag-fg: #0550ae;
   --done: #1a7f37;
   --done-bg: #dafbe1;
+  --doing: #9a6700;
+  --doing-bg: #fff8c5;
   --danger: #cf222e;
   --mark: #fff8c5;
 }
@@ -28,6 +30,8 @@
     --tag-fg: #79c0ff;
     --done: #3fb950;
     --done-bg: #12261e;
+    --doing: #d29922;
+    --doing-bg: #2e2410;
     --danger: #f85149;
     --mark: #3b2e00;
   }
@@ -136,6 +140,7 @@ a.tag:hover { text-decoration: none; filter: brightness(0.95); }
 .notes time { margin-left: auto; color: var(--faint); font-size: 0.85rem; white-space: nowrap; }
 .notes li.done .title { color: var(--muted); text-decoration: line-through; font-weight: 400; }
 .notes li.done .tag { opacity: 0.6; }
+.notes .dot { color: var(--doing); font-size: 0.8rem; }
 .empty { color: var(--muted); padding: 1.5rem 0.25rem; }
 .notes li.empty { display: block; }
 
@@ -149,6 +154,7 @@ a.tag:hover { text-decoration: none; filter: brightness(0.95); }
 .meta .id { color: var(--faint); }
 .badge { padding: 0 0.5rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; line-height: 1.6; }
 .badge-done { background: var(--done-bg); color: var(--done); }
+.badge-doing { background: var(--doing-bg); color: var(--doing); }
 .badge-open { background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1px var(--border); }
 
 .actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }

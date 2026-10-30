@@ -231,6 +231,7 @@ type jsonNote struct {
 	Title   string    `json:"title"`
 	Tags    []string  `json:"tags"`
 	Done    bool      `json:"done"`
+	Doing   bool      `json:"doing"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
 	Path    string    `json:"path"`
@@ -241,7 +242,7 @@ func toJSON(n *store.Note) jsonNote {
 	if tags == nil {
 		tags = []string{}
 	}
-	return jsonNote{n.ID, n.Title, tags, n.Done, n.Created, n.Updated, n.Path}
+	return jsonNote{n.ID, n.Title, tags, n.Done, n.Doing, n.Created, n.Updated, n.Path}
 }
 
 func writeJSON(w io.Writer, v any) error {
@@ -302,8 +303,11 @@ func (a *app) printNotes(out io.Writer, notes []*store.Note) {
 	rows := make([][]cell, 0, len(notes))
 	for _, n := range notes {
 		mark, markStyle, titleStyle := "[ ]", p.dim, p.bold
-		if n.Done {
-			mark, markStyle, titleStyle = "[x]", p.green, p.strike
+		switch {
+		case n.Done:
+			mark, markStyle, titleStyle = "[✓]", p.green, p.strike
+		case n.Doing:
+			mark, markStyle = "[●]", p.yellow
 		}
 		rows = append(rows, []cell{
 			{text: strconv.Itoa(n.ID), style: p.cyan},
@@ -385,6 +389,9 @@ func showHeader(p painter, n *store.Note, now time.Time) string {
 	if n.Done {
 		meta = append(meta, p.green("✓ done"))
 	}
+	if n.Doing {
+		meta = append(meta, p.yellow("● doing"))
+	}
 	if len(n.Tags) > 0 {
 		meta = append(meta, p.yellow(formatTags(n.Tags)))
 	}
@@ -432,6 +439,36 @@ func (a *app) doneCmd(done bool) *cobra.Command {
 					continue
 				}
 				fmt.Fprintf(out, "%s %s %s\n", p.green(verb+":"), p.cyan(strconv.Itoa(n.ID)), n.Title)
+			}
+			return errors.Join(errs...)
+		},
+	}
+}
+
+func (a *app) startCmd(start bool) *cobra.Command {
+	use, short, verb, filter := "start <id...>", "Mark notes as doing now", "Started", store.StatusOpen
+	if !start {
+		use, short, verb, filter = "stop <id...>", "Mark notes as no longer doing", "Stopped", store.StatusAll
+	}
+	return &cobra.Command{
+		Use:               use,
+		Short:             short,
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: a.completeNotes(false, store.Filter{Status: filter}),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
+			p := colorFor(out)
+			var errs []error
+			for _, ref := range args {
+				n, err := a.store.Resolve(ref)
+				if err == nil {
+					n, err = a.store.SetDoing(n.ID, start)
+				}
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+				fmt.Fprintf(out, "%s %s %s\n", p.yellow(verb+":"), p.cyan(strconv.Itoa(n.ID)), n.Title)
 			}
 			return errors.Join(errs...)
 		},
@@ -590,8 +627,11 @@ func (a *app) searchCmd() *cobra.Command {
 					fmt.Fprintln(out)
 				}
 				title := highlight(p, m.Note.Title, q)
-				if m.Note.Done {
-					title += " " + p.green("[x]")
+				switch {
+				case m.Note.Done:
+					title += " " + p.green("[✓]")
+				case m.Note.Doing:
+					title += " " + p.yellow("[●]")
 				}
 				fmt.Fprintf(out, "%s  %s  %s\n", p.cyan(strconv.Itoa(m.Note.ID)), p.bold(title), p.yellow(highlight(p, formatTags(m.Note.Tags), q)))
 				for _, l := range m.Lines {

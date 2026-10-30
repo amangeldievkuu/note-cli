@@ -335,6 +335,43 @@ func TestDoneUndone(t *testing.T) {
 	}
 }
 
+func TestDoing(t *testing.T) {
+	s := newStore(t)
+	seedStore(t, s, seed{title: "a"})
+
+	n, _ := s.Get(1)
+	data, err := os.ReadFile(n.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "doing") {
+		t.Errorf("open note's frontmatter mentions doing:\n%s", data)
+	}
+
+	steps := []struct {
+		name        string
+		set         func() (*Note, error)
+		done, doing bool
+	}{
+		{"start", func() (*Note, error) { return s.SetDoing(1, true) }, false, true},
+		{"done clears doing", func() (*Note, error) { return s.SetDone(1, true) }, true, false},
+		{"start reopens", func() (*Note, error) { return s.SetDoing(1, true) }, false, true},
+		{"stop", func() (*Note, error) { return s.SetDoing(1, false) }, false, false},
+	}
+	for _, st := range steps {
+		if _, err := st.set(); err != nil {
+			t.Fatalf("%s: %v", st.name, err)
+		}
+		n, err := s.Get(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n.Done != st.done || n.Doing != st.doing {
+			t.Errorf("%s: done=%v doing=%v, want %v %v", st.name, n.Done, n.Doing, st.done, st.doing)
+		}
+	}
+}
+
 func isNotFound(err error) bool {
 	_, ok := errors.AsType[*NotFoundError](err)
 	return ok

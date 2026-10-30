@@ -82,9 +82,22 @@ func TestSession(t *testing.T) {
 	if out := mustRun(t, nil, "list"); strings.Contains(out, "Buy groceries") {
 		t.Errorf("done note in default list:\n%s", out)
 	}
-	wantContains(t, mustRun(t, nil, "list", "--done"), "[x]  Buy groceries")
+	wantContains(t, mustRun(t, nil, "list", "--done"), "[✓]  Buy groceries")
 	wantContains(t, mustRun(t, nil, "ls", "--all", "-t", "errands"), "Buy groceries")
 	wantContains(t, mustRun(t, nil, "undone", "buy"), "Reopened: 1")
+
+	// start marks a note as doing; starting a done note reopens it, and
+	// finishing it clears doing.
+	wantContains(t, mustRun(t, nil, "start", "2"), "Started: 2 Draft post")
+	wantContains(t, mustRun(t, nil, "ls"), "[●]  Draft post", "[ ]  Fix bike")
+	wantContains(t, mustRun(t, nil, "stop", "2"), "Stopped: 2 Draft post")
+	wantContains(t, mustRun(t, nil, "ls"), "[ ]  Draft post")
+	mustRun(t, nil, "done", "3")
+	mustRun(t, nil, "start", "3")
+	wantContains(t, mustRun(t, nil, "ls"), "[●]  Fix bike")
+	mustRun(t, nil, "done", "3")
+	wantContains(t, mustRun(t, nil, "ls", "--done"), "[✓]  Fix bike")
+	mustRun(t, nil, "undone", "3")
 
 	// rm asks first; anything but yes aborts.
 	if _, err := run(t, strings.NewReader("n\n"), "rm", "2"); err == nil || err.Error() != "aborted" {

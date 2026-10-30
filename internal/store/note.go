@@ -18,6 +18,7 @@ type Note struct {
 	Title   string    `yaml:"title"`
 	Tags    []string  `yaml:"tags,flow"`
 	Done    bool      `yaml:"done"`
+	Doing   bool      `yaml:"doing,omitempty"`
 	Created time.Time `yaml:"created"`
 	Updated time.Time `yaml:"updated"`
 

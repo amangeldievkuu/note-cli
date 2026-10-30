@@ -33,7 +33,7 @@ do
     if type(n.tags) == "table" and #n.tags > 0 then
       tags = "  #" .. table.concat(n.tags, " #")
     end
-    return string.format("%4d %s %s%s", n.id, n.done and "[x]" or "[ ]", n.title, tags)
+    return string.format("%4d %s %s%s", n.id, n.done and "[✓]" or n.doing and "[●]" or "[ ]", n.title, tags)
   end
 
   local function edit(path)

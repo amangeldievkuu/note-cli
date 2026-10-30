@@ -100,7 +100,7 @@ Run "note" with no command to list open notes.`,
 	)
 	for _, c := range []*cobra.Command{
 		a.newCmd(), a.listCmd(), a.showCmd(), a.editCmd(),
-		a.doneCmd(true), a.doneCmd(false), a.rmCmd(), a.restoreCmd(), a.trashCmd(),
+		a.doneCmd(true), a.doneCmd(false), a.startCmd(true), a.startCmd(false), a.rmCmd(), a.restoreCmd(), a.trashCmd(),
 		a.appendCmd(), a.tagCmd(), a.mvCmd(), a.searchCmd(), a.tagsCmd(),
 	} {
 		c.GroupID = "notes"

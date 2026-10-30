@@ -156,11 +156,27 @@ func (s *Store) Update(id int, fn func(n *Note) (changed bool)) (*Note, error) {
 	return n, s.save(n)
 }
 
-// SetDone marks the note done or not done.
+// SetDone marks the note done or not done. A done note is no longer doing.
 func (s *Store) SetDone(id int, done bool) (*Note, error) {
 	return s.Update(id, func(n *Note) bool {
-		changed := n.Done != done
+		changed := n.Done != done || done && n.Doing
 		n.Done = done
+		if done {
+			n.Doing = false
+		}
+		return changed
+	})
+}
+
+// SetDoing marks the note as being worked on now, or not. Starting a done
+// note reopens it.
+func (s *Store) SetDoing(id int, doing bool) (*Note, error) {
+	return s.Update(id, func(n *Note) bool {
+		changed := n.Doing != doing || doing && n.Done
+		n.Doing = doing
+		if doing {
+			n.Done = false
+		}
 		return changed
 	})
 }
